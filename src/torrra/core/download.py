@@ -12,11 +12,16 @@ def get_download_manager() -> "DownloadManager":
 
 
 class DownloadManager:
-    _STATE_MAP: dict[lt.torrent_status.states, tuple[str, str]] = {
-        lt.torrent_status.states.downloading: ("Downloading", "DL"),
-        lt.torrent_status.states.seeding: ("Seeding", "SE"),
-        lt.torrent_status.states.finished: ("Completed", "CD"),
-        lt.torrent_status.states.downloading_metadata: ("Fetching", "FE"),
+    # 修复：将 lt.torrent_status.states 替换为整数状态码
+    # 1=checking_files, 2=downloading_metadata, 3=downloading, 4=finished, 5=seeding, 6=allocating
+    _STATE_MAP: dict[int, tuple[str, str]] = {
+        3: ("Downloading", "DL"),       # downloading
+        5: ("Seeding", "SE"),           # seeding
+        4: ("Completed", "CD"),         # finished
+        2: ("Fetching", "FE"),          # downloading_metadata
+        1: ("Checking", "CHK"),         # checking_files
+        6: ("Allocating", "ALC"),       # allocating
+        0: ("Checking", "CHK"),         # checking_resume_data
     }
 
     def __init__(self) -> None:
@@ -90,6 +95,7 @@ class DownloadManager:
             return "Paused" if not short else "PD"
 
         idx = 1 if short else 0
+        # 这里的 status["state"] 已经是 int 类型，直接去 _STATE_MAP 查找即可
         return self._STATE_MAP.get(status["state"], ("N/A", "N/A"))[idx]
 
     def check_metadata_updates(self) -> None:

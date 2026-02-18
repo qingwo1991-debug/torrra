@@ -19,7 +19,10 @@ class TorrentDict(TypedDict):
 class TorrentStatus(TypedDict):
     """Torrent status on upload and download."""
 
-    state: lt.torrent_status.states
+    # 修復：解決 AttributeError: module 'libtorrent' has no attribute 'torrent_status'
+    # 由於 libtorrent 的 Python 綁定在不同環境下結構不同，直接引用 lt.torrent_status 會導致崩潰。
+    # 改用 Any 或 int 可以確保程序正常啟動。
+    state: Any  
     progress: float
     down_speed: float
     up_speed: float

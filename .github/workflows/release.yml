@@ -1,11 +1,43 @@
-# ... 前面代码保持不变 ...
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  # 增加手動觸發選項，可在 Actions 頁面手動輸入 Tag
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: '手動輸入版本號 (例如 v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+jobs:
+  # 提取版本號的共同步驟
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      tag: ${{ steps.get_version.outputs.tag }}
+    steps:
+      - id: get_version
+        run: |
+          # 如果是手動觸發，取輸入值；如果是 Tag 推送，取 GITHUB_REF_NAME
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag_name }}"
+          else
+            TAG="${{ github.ref_name }}"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "version=${TAG#v}" >> $GITHUB_OUTPUT
+
   docker:
     name: Publish to Docker Hub
     needs: prepare
     runs-on: ubuntu-latest
     environment:
       name: dockerhub
-      # 这里也同步修改，如果用户名在 Secrets 里
+      # 這裡使用 secrets.DOCKERHUB_USERNAME，請確保在 GitHub Secrets 中已配置
       url: https://hub.docker.com/r/${{ secrets.DOCKERHUB_USERNAME }}/torrra
     permissions:
       contents: read
@@ -16,7 +48,6 @@
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          # 修改这里：从 vars 改为 secrets
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
@@ -34,4 +65,58 @@
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/torrra:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/torrra:${{ needs.prepare.outputs.version }}
-# ... 后面代码保持不变 ...
+
+  build_and_attach_bin:
+    name: Build & Attach Bin on ${{ matrix.os }}
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - "ubuntu-latest"
+          - "windows-latest"
+          - "macos-latest"
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install uv and setup the python version
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: |
+          uv sync --locked
+          uv pip install pyinstaller
+
+      - name: Build standalone binary
+        run: uv run pyinstaller torrra.spec
+
+      - name: Rename binary by platform
+        shell: bash
+        run: |
+          mkdir -p dist-out
+          ARCH=$(uname -m)
+          TAG="${{ needs.prepare.outputs.tag }}"
+
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            cp dist/torrra "dist-out/torrra_${TAG}_linux_${ARCH}"
+          elif [[ "$RUNNER_OS" == "Windows" ]]; then
+            cp dist/torrra.exe "dist-out/torrra_${TAG}_windows_${ARCH}.exe"
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            cp dist/torrra "dist-out/torrra_${TAG}_macos_${ARCH}"
+          fi
+
+      - name: Upload binary to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          files: dist-out/*

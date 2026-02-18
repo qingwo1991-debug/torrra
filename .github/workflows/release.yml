@@ -37,8 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: dockerhub
-      # 這裡使用 secrets.DOCKERHUB_USERNAME，請確保在 GitHub Secrets 中已配置
-      url: https://hub.docker.com/r/${{ secrets.DOCKERHUB_USERNAME }}/torrra
+      # 注意：這裡不再設置 url，因為 GitHub 禁止在 environment.url 中使用 secrets
     permissions:
       contents: read
     steps:
